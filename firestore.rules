@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid']) && 
+             data.uid == request.auth.uid &&
+             (data.get('email', null) == null || data.get('email', '') is string) &&
+             (data.get('displayName', '') is string && data.get('displayName', '').size() <= 100);
+    }
+
+    match /test_connection/ping {
+      allow get: if true;
+    }
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId) && isValidId(userId);
+
+      // Subcollections
+      match /bots/{botId} {
+        allow read, write: if isOwner(userId) && isValidId(botId);
+      }
+
+      match /sanctums/{sanctumId} {
+        allow read, write: if isOwner(userId) && isValidId(sanctumId);
+        
+        match /messages/{messageId} {
+          allow read, write: if isOwner(userId) && isValidId(messageId);
+        }
+      }
+    }
+
+    function isValidPublicVoice(data) {
+      return data.keys().hasAll(['id', 'characterName', 'vocalDNA', 'voiceId', 'creatorId', 'creatorName', 'usageCount', 'createdAt']) &&
+             data.id is string &&
+             data.characterName is string && data.characterName.size() <= 100 &&
+             data.vocalDNA is map &&
+             data.voiceId is string &&
+             data.creatorId == request.auth.uid &&
+             data.creatorName is string && data.creatorName.size() <= 100 &&
+             data.usageCount is number &&
+             (data.createdAt == request.time || data.createdAt is number);
+    }
+
+    match /public_voices/{voiceId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn(); 
+      allow create: if isSignedIn() && isValidId(voiceId) && isValidPublicVoice(incoming());
+      allow update: if isSignedIn() && (
+        (isOwner(existing().creatorId) && incoming().creatorId == existing().creatorId && incoming().createdAt == existing().createdAt) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['usageCount']))
+      );
+      allow delete: if isSignedIn() && isOwner(existing().creatorId);
+    }
+  }
+}

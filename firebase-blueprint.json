@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile data stored in Firestore",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastLogin": { "type": "string", "format": "date-time" },
+        "uid": { "type": "string" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "Bot": {
+      "title": "Bot Persona",
+      "description": "Customized AI persona created by the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "avatar": { "type": "string" },
+        "description": { "type": "string" },
+        "script": { "type": "string" },
+        "voiceId": { "type": "string" },
+        "personality": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "color": { "type": "string" },
+        "isHidden": { "type": "boolean" }
+      },
+      "required": ["id", "name", "creatorId", "color"]
+    },
+    "Sanctum": {
+      "title": "Sanctum Session",
+      "description": "A focused chat session with a specific bot",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "botId": { "type": "string" },
+        "name": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "botId", "userId"]
+    },
+    "Message": {
+      "title": "Chat Message",
+      "description": "Individual message within a sanctum",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "botId": { "type": "string" }
+      },
+      "required": ["id", "role", "content", "timestamp", "botId"]
+    },
+    "PublicVoice": {
+      "title": "Public Voice",
+      "description": "A cloned voice shared with the community",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "characterName": { "type": "string" },
+        "vocalDNA": { "type": "object" },
+        "voiceId": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "usageCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "characterName", "vocalDNA", "voiceId", "creatorId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Individual user records."
+    },
+    "/users/{userId}/bots/{botId}": {
+      "schema": "Bot",
+      "description": "Bots created by this user."
+    },
+    "/users/{userId}/sanctums/{sanctumId}": {
+      "schema": "Sanctum",
+      "description": "Chat sessions (Sanctums) belonging to the user."
+    },
+    "/users/{userId}/sanctums/{sanctumId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages within a specific sanctum."
+    },
+    "/public_voices/{voiceId}": {
+      "schema": "PublicVoice",
+      "description": "Community shared voices."
+    }
+  }
+}

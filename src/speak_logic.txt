@@ -1,0 +1,132 @@
+  const activeGenerationIdRef = useRef<string | null>(null);
+
+  const stopSpeaking = () => {
+    activeGenerationIdRef.current = null;
+    if (currentAudioSourceRef.current) {
+      try {
+        currentAudioSourceRef.current.stop();
+      } catch (e) { }
+      currentAudioSourceRef.current = null;
+    }
+    setIsSpeaking(null);
+    setIsAudioLoading(null);
+  };
+
+  const speak = async (text: string, messageId: string, cachedAudio?: string) => {
+    const generationId = Math.random().toString(36).substring(7);
+    activeGenerationIdRef.current = generationId;
+
+    try {
+      const ctx = getAudioContext();
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+
+      if (isSpeaking === messageId) {
+        stopSpeaking();
+        return;
+      }
+      
+      stopSpeaking();
+      setIsSpeaking(messageId);
+      activeGenerationIdRef.current = generationId; // Restore AFTER stopSpeaking clears it
+      
+      let base64Audio = cachedAudio;
+      
+      if (!base64Audio) {
+        setIsAudioLoading(messageId);
+        
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) throw new Error('Chave da API não configurada');
+
+        const ai = new GoogleGenAI({ apiKey });
+        const vocalActingDescription = activeBot.vocalDNA?.actingPrompt || '';
+        const speechPrompt = vocalActingDescription 
+          ? `(Atue com esta voz: ${vocalActingDescription}). Fale o seguinte texto: ${text}`
+          : text;
+
+        const safetySettings = [
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        ];
+          
+        const result = await ai.models.generateContent({
+          model: "gemini-3.1-flash-tts-preview",
+          contents: [{ parts: [{ text: speechPrompt }] }],
+          config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: (activeBot.voiceId as any) || 'Zephyr' },
+              },
+            },
+            safetySettings,
+          },
+        });
+
+        // CRITICAL CHECK: Still the same generation?
+        if (activeGenerationIdRef.current !== generationId) return;
+
+        const cand = result.candidates?.[0];
+        base64Audio = cand?.content?.parts?.[0]?.inlineData?.data;
+        
+        setIsAudioLoading(null);
+
+        if (base64Audio) {
+          if (messageId !== "preview" && messageId !== "cloning-success") {
+            setMessages(prev => {
+              const botMsgs = prev[activeBotId] || [];
+              return {
+                ...prev,
+                [activeBotId]: botMsgs.map(m => m.id === messageId ? { ...m, audioContent: base64Audio } : m)
+              };
+            });
+          }
+        }
+      }
+
+      // CRITICAL CHECK: Still the same generation?
+      if (activeGenerationIdRef.current !== generationId) return;
+
+      if (!base64Audio) {
+        setIsSpeaking(null);
+        return;
+      }
+
+      const audioData = atob(base64Audio);
+      const arrayBuffer = new ArrayBuffer(audioData.length);
+      const uint8View = new Uint8Array(arrayBuffer);
+      for (let i = 0; i < audioData.length; i++) {
+        uint8View[i] = audioData.charCodeAt(i);
+      }
+
+      const int16Data = new Int16Array(arrayBuffer);
+      const float32Data = new Float32Array(int16Data.length);
+      for (let i = 0; i < int16Data.length; i++) {
+        float32Data[i] = int16Data[i] / 32768.0;
+      }
+
+      const audioBuffer = ctx.createBuffer(1, float32Data.length, 24000);
+      audioBuffer.getChannelData(0).set(float32Data);
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      
+      source.onended = () => {
+        if (currentAudioSourceRef.current === source) {
+          setIsSpeaking(null);
+          currentAudioSourceRef.current = null;
+        }
+      };
+      
+      currentAudioSourceRef.current = source;
+      source.start();
+    } catch (error) {
+      console.error('ERRO_AUDIO:', error);
+      setIsSpeaking(null);
+      setIsAudioLoading(null);
+    }
+  };

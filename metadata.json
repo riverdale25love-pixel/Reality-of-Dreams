@@ -1,0 +1,9 @@
+{
+  "name": "Reality of Dreams IA",
+  "description": "Uma plataforma de chatbots com design escuro alternativo, permitindo criação de personas, salas privadas e clonagem de voz a partir de vídeos.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": []
+}
