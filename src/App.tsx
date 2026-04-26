@@ -504,6 +504,19 @@ export default function App() {
     setShowUserModal(false);
   };
 
+  const getExportData = () => {
+    const userBots = bots.filter(b => b.creatorId === user?.uid || parseInt(b.id) > 1000);
+    const exportObj: Record<string, string> = {};
+    
+    userBots.forEach(bot => {
+      const slug = (bot.name || 'unnamed').toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, '');
+      const script = localScripts[bot.id] || bot.script;
+      exportObj[slug] = `PERSONAGEM: ${bot.name}. DESCRIÇÃO: ${bot.description}. SCRIPT: ${script}`;
+    });
+    
+    return JSON.stringify(exportObj, null, 2);
+  };
+
   const userAvatarInputRef = useRef<HTMLInputElement>(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const [isUpdatingUserAvatar, setIsUpdatingUserAvatar] = useState(false);
@@ -646,6 +659,7 @@ export default function App() {
   const [recordedMimeType, setRecordedMimeType] = useState<string>('audio/webm');
   const [micLevel, setMicLevel] = useState(0);
   const [isAutoFixingImages, setIsAutoFixingImages] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [showVoicePublishModal, setShowVoicePublishModal] = useState(false);
   const [voiceNameToPublish, setVoiceNameToPublish] = useState('');
   const [botToPublish, setBotToPublish] = useState<Persona | null>(null);
@@ -3501,6 +3515,52 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {showExportModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-bg/95 backdrop-blur-3xl"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="w-full max-w-2xl bg-sidebar border border-border p-8 rounded-3xl shadow-[0_0_100px_rgba(0,242,255,0.15)] relative flex flex-col max-h-[80vh]"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-black text-white uppercase tracking-tighter">Exportar DNA Neural</h3>
+                  <p className="text-[10px] text-text-dim font-mono uppercase tracking-widest">Código pronto para o seu backend no Vercel</p>
+                </div>
+                <button onClick={() => setShowExportModal(false)} className="p-2 hover:bg-white/10 rounded-full">
+                  <X />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-auto bg-black/40 border border-white/10 p-4 rounded-xl font-mono text-xs text-accent-cyan scrollbar-dark">
+                <pre>{`const characters = ${getExportData()};`}</pre>
+              </div>
+
+              <div className="mt-6 flex flex-col gap-4">
+                <p className="text-[10px] text-text-dim text-center leading-relaxed">
+                  Copie o objeto acima e cole-o no seu arquivo <code className="text-white">api/chat.js</code> no campo <code className="text-white">characters</code>.
+                </p>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(`const characters = ${getExportData()};`);
+                    alert("Copiado para a área de transferência!");
+                  }}
+                  className="w-full py-4 bg-accent-cyan text-black font-black uppercase text-xs tracking-widest rounded-2xl hover:scale-[1.02] active:scale-95 transition-all"
+                >
+                  Copiar Código JSON
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {showUserModal && user && (
           <motion.div 
             initial={{ opacity: 0 }}
@@ -3557,6 +3617,16 @@ export default function App() {
                     className="w-full py-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-3"
                   >
                     <LogOut size={16} /> Encerrar Sessão
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setShowUserModal(false);
+                      setShowExportModal(true);
+                    }}
+                    className="w-full py-4 bg-accent-cyan/10 border border-accent-cyan/20 rounded-2xl text-[10px] font-black uppercase tracking-widest text-accent-cyan hover:bg-accent-cyan hover:text-black transition-all flex items-center justify-center gap-3"
+                  >
+                    <ExternalLink size={16} /> Exportar Personagens (Vercel)
                   </button>
                 </div>
 
