@@ -1,36 +1,34 @@
-const characters = {
-  // --- PERSONAGENS ORIGINAIS DO SISTEMA ---
+import admin from 'firebase-admin';
+
+// Inicializar Firebase Admin (apenas uma vez)
+if (!admin.apps.length) {
+  admin.initializeApp({
+    projectId: "gen-lang-client-0769325210",
+  });
+}
+
+const db = admin.firestore();
+
+const SYSTEM_CHARACTERS = {
   "hannibal_lecter": "PERSONAGEM: Hannibal Lecter. DESCRIÇÃO: Psiquiatra renomado e um esteta culinário... peculiar. SCRIPT: Você é Hannibal Lecter. Você é extremamente educado, sofisticado e fala com uma calma perturbadora. Você analisa psicologicamente o interlocutor a cada palavra.",
   "mycroft_homes": "PERSONAGEM: Mycroft Holmes. DESCRIÇÃO: Irmão mais velho de Sherlock, detentor de um intelecto superior e posição influente no governo britânico. SCRIPT: Você é Mycroft Holmes. Você é frio, pragmático e vê os outros (incluindo seu irmão) como peças em um tabuleiro global.",
-  
-  // --- PERSONAGENS CRIADOS POR VOCÊ (28) ---
-  // Dica: Use o botão 'Exportar Personagens' no seu perfil para copiar o DNA Neural completo e substituir aqui.
-  "elliot_alencastre": "PERSONAGEM: Elliot Alencastre. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "charles_blackwell": "PERSONAGEM: Charles Blackwell. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "salvatore_bellini": "PERSONAGEM: Salvatore Bellini. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "lian_corveth": "PERSONAGEM: Lian Corveth. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "aeron_draven": "PERSONAGEM: Aeron Draven. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "noah_castellan": "PERSONAGEM: Noah Castellan. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "draco_malfoy": "PERSONAGEM: Draco Malfoy. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "martin": "PERSONAGEM: Martin. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "duncan_vizla": "PERSONAGEM: Duncan Vizla. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "le_chiffre": "PERSONAGEM: Le Chiffre. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "price_charmont": "PERSONAGEM: Price Charmont. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "jack_ganzer": "PERSONAGEM: Jack Ganzer. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "luke_brandon": "PERSONAGEM: Luke Brandon. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "adam_raki": "PERSONAGEM: Adam Raki. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "lucas_a_caca": "PERSONAGEM: lucas (a caça). [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "ben_affleck": "PERSONAGEM: Ben Affleck. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "nigel_banyai": "PERSONAGEM: Nigel Banyai. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "kento_nanamin": "PERSONAGEM: Kento Nanamin. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "cedric_diggory": "PERSONAGEM: Cedric Diggory. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "eddie_brock": "PERSONAGEM: Eddie Brock. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "dr_adrian_cole": "PERSONAGEM: Dr. Adrian Cole. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "james_benedetti": "PERSONAGEM: James Benedetti. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "pietro_dlavigna": "PERSONAGEM: Pietro D’Lavigna. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "patrick_hockstetter": "PERSONAGEM: Patrick Hockstetter. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]",
-  "bill_skarsgard": "PERSONAGEM: Bill Skarsgård. [DEFINA ATRAVÉS DO BOTÃO EXPORTAR]"
 };
+
+async function findBotInFirestore(name) {
+  try {
+    // Busca em todos os bots criados pelos usuários através de uma Collection Group query
+    const botsRef = db.collectionGroup('bots');
+    const snapshot = await botsRef.where('name', '==', name).limit(1).get();
+    
+    if (snapshot.empty) return null;
+    
+    const botData = snapshot.docs[0].data();
+    return `PERSONAGEM: ${botData.name}. DESCRIÇÃO: ${botData.description || ''}. SCRIPT: ${botData.script || ''}`;
+  } catch (err) {
+    console.error('Erro ao buscar no Firestore:', err);
+    return null;
+  }
+}
 
 export default async function handler(req, res) {
   // 1. Verificação de Segurança (API Key do App)
@@ -53,20 +51,25 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Campos "message" e "character" são obrigatórios.' });
   }
 
+  // Tenta encontrar no hardcoded ou no Firestore
   const slug = character.toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, '');
-  const personality = characters[slug];
+  let personality = SYSTEM_CHARACTERS[slug];
+
+  if (!personality) {
+    personality = await findBotInFirestore(character);
+  }
 
   if (!personality) {
     return res.status(404).json({ 
-      error: `Personagem "${character}" não encontrado.`,
-      available: Object.keys(characters)
+      error: `Personagem "${character}" não encontrado no sistema nem no banco de dados.`,
+      available_system: Object.keys(SYSTEM_CHARACTERS)
     });
   }
 
   // 4. Configuração do Gemini
   const GEMINI_KEY = process.env.GEMINI_API_KEY;
   if (!GEMINI_KEY) {
-    return res.status(500).json({ error: 'Configuração ausente: GEMINI_API_KEY.' });
+    return res.status(500).json({ error: 'Configuração ausente NO VERCEL: Defina GEMINI_API_KEY no painel da Vercel.' });
   }
 
   try {
@@ -77,32 +80,29 @@ export default async function handler(req, res) {
         contents: [{
           role: 'user',
           parts: [{ 
-            text: `${personality}\n\nREGRAS ADICIONAIS:\n- Atue 100% como o personagem acima.\n- Não saia do personagem em hipótese alguma.\n- Use o idioma em que o usuário falar.\n\nMENSAGEM DO USUÁRIO: ${message}\n\nRESPOSTA DO PERSONAGEM:` 
+            text: `${personality}\n\nREGRAS DE OURO:\n- Responda SEMPRE em Português.\n- Atue 100% como o personagem.\n- Mantenha o arquivo de fala e gestos.\n\nUSUÁRIO: ${message}\n\nRESPOSTA:` 
           }]
         }],
         generationConfig: {
-          temperature: 0.8,
+          temperature: 0.9,
           maxOutputTokens: 2048,
         }
       })
     });
 
     const data = await response.json();
-    
-    if (data.error) {
-      throw new Error(data.error.message || 'Erro na API do Gemini');
-    }
+    if (data.error) throw new Error(data.error.message || 'Erro na API do Gemini');
 
-    const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'O personagem não conseguiu responder no momento.';
+    const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'O personagem não conseguiu responder.';
     
     return res.status(200).json({ 
       response: aiResponse,
       character: character,
-      timestamp: new Date().toISOString()
+      status: "success"
     });
   } catch (error) {
     console.error('Chat Error:', error);
-    return res.status(500).json({ error: 'Erro interno ao processar o chat.' });
+    return res.status(500).json({ error: 'Erro ao processar resposta da IA.' });
   }
 }
 

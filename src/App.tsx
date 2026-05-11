@@ -1151,15 +1151,45 @@ export default function App() {
     let finalUserContent = textToSend;
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error('Configuração ausente: GEMINI_API_KEY não encontrada.');
+      // Prioridade 1: Backend API (Mais seguro p/ Vercel)
+      // Prioridade 2: VITE_GEMINI_API_KEY (Caso queira usar direto no client)
+      const clientApiKey = import.meta.env.VITE_GEMINI_API_KEY || (process.env.GEMINI_API_KEY as string);
+      
+      let aiResponseText = "";
+      
+      // Tentamos usar o Backend primeiro se estivermos em produção (Vercel)
+      if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        try {
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'x-api-key': import.meta.env.VITE_APP_API_KEY || ""
+            },
+            body: JSON.stringify({
+              message: textToSend,
+              character: activeBot.name,
+              history: [] // Poderíamos passar o histórico aqui
+            })
+          });
+          const data = await res.json();
+          if (data.response) {
+            aiResponseText = data.response;
+          }
+        } catch (e) {
+          console.warn("Backend indisponível, tentando Client SDK...");
+        }
       }
 
-      const ai = new GoogleGenAI({ apiKey });
-      
-      // PASSO 1: Speech-to-Text (Transcrever áudio do usuário se existir)
-      if (audioData && !textOverride) {
+      // Se o backend falhou ou estamos em dev, usamos o SDK direto
+      if (!aiResponseText) {
+        if (!clientApiKey) {
+          throw new Error('Configuração ausente: GEMINI_API_KEY ou VITE_GEMINI_API_KEY não encontrada.');
+        }
+
+        const ai = new GoogleGenAI({ apiKey: clientApiKey });
+        
+        if (audioData && !textOverride) {
         setIsTranscribing(userMsg.id);
         try {
           const mimeType = audioData.startsWith('AAAA') ? 'audio/mp4' : (recordedMimeType || 'audio/webm');
@@ -1309,13 +1339,14 @@ export default function App() {
         2
       );
 
-      const assistantContent = (typeof response.text === 'function' ? response.text() : response.text) || 'O sistema falhou em materializar uma resposta.';
+      aiResponseText = (typeof response.text === 'function' ? response.text() : response.text) || 'O sistema falhou em materializar uma resposta.';
+    }
       
       const assistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         botId: activeBotId,
         role: 'assistant',
-        content: assistantContent,
+        content: aiResponseText,
         timestamp: Date.now()
       };
 
@@ -1325,7 +1356,7 @@ export default function App() {
       }));
 
       if (voiceMode || audioData) {
-        speak(assistantContent, assistantMsg.id);
+        speak(aiResponseText, assistantMsg.id);
       }
     } catch (error: any) {
       console.error('ERRO_CONEXÃO_GEMINI:', error);
